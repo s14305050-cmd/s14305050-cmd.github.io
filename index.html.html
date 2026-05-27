@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>極光霓虹：終極街機貪吃蛇 (120Hz 高刷極致版)</title>
+    <!-- 引入 Tailwind CSS 進行現代化快速佈局 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Font Awesome 提供精美圖示 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Noto+Sans+TC:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Orbitron', 'Noto Sans TC', sans-serif;
+            background: radial-gradient(circle at center, #111827 0%, #030712 100%);
+            touch-action: none; /* 防止手機瀏覽器雙擊放大與拖曳橡皮筋效果 */
+        }
+
+        .neon-text-cyan {
+            text-shadow: 0 0 5px rgba(6, 182, 212, 0.5), 0 0 15px rgba(6, 182, 212, 0.7);
+        }
+
+        .neon-text-pink {
+            text-shadow: 0 0 5px rgba(236, 72, 153, 0.5), 0 0 15px rgba(236, 72, 153, 0.7);
+        }
+
+        .neon-border-cyan {
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.25), inset 0 0 10px rgba(6, 182, 212, 0.15);
+        }
+
+        /* 搖桿按鈕波紋特效 */
+        .dpad-btn:active {
+            background-color: rgba(6, 182, 212, 0.4);
+            transform: scale(0.92);
+        }
+
+        /* 隱藏手機端滾動條 */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+
+        /* 畫布抖動動畫 (吃食物或死亡時用) */
+        @keyframes shake {
+            0%, 100% { transform: translate(0, 0); }
+            10%, 30%, 50%, 70%, 90% { transform: translate(-2px, -1px); }
+            20%, 40%, 60%, 80% { transform: translate(2px, 1.5px); }
+        }
+        .shake-effect {
+            animation: shake 0.2s cubic-bezier(.36,.07,.19,.97) both;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-between min-h-screen text-gray-100 p-2 sm:p-4 select-none">
+
+    <!-- 頂部 Header -->
+    <header class="w-full max-w-md text-center mt-2">
+        <h1 class="text-3xl sm:text-4xl font-black tracking-widest text-cyan-400 neon-text-cyan flex items-center justify-center gap-2">
+            <i class="fa-solid fa-serpent"></i> NEON SNAKE
+        </h1>
+        <p class="text-xs text-gray-400 tracking-wider mt-1">經典重塑 · 極光街機體驗</p>
+    </header>
+
+    <!-- 主遊戲區域 -->
+    <main class="w-full max-w-md flex flex-col items-center gap-3 my-auto">
+        
+        <!-- 計分板與控制欄 -->
+        <div class="w-full flex justify-between items-center bg-gray-900/80 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-gray-800 shadow-xl">
+            <div class="flex flex-col">
+                <span class="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Score</span>
+                <span id="score" class="text-2xl font-black text-pink-500 neon-text-pink">000</span>
+            </div>
+            
+            <!-- 音效與難度設定 -->
+            <div class="flex items-center gap-3">
+                <button id="soundBtn" class="text-gray-400 hover:text-cyan-400 transition-colors p-2 text-lg" title="切換音效">
+                    <i id="soundIcon" class="fa-solid fa-volume-high"></i>
+                </button>
+                <select id="difficultySelect" class="bg-gray-800 text-cyan-400 border border-cyan-500/30 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-cyan-500 font-bold">
+                    <option value="easy">休閒模式</option>
+                    <option value="medium" selected>普通模式</option>
+                    <option value="hard">瘋狂挑戰</option>
+                </select>
+            </div>
+
+            <div class="flex flex-col items-end">
+                <span class="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Best</span>
+                <span id="highScore" class="text-2xl font-black text-cyan-400 neon-text-cyan">000</span>
+            </div>
+        </div>
+
+        <!-- 遊戲畫布容器 -->
+        <div class="relative w-full aspect-square bg-gray-950 rounded-2xl border-2 border-cyan-500/30 overflow-hidden neon-border-cyan" id="canvasContainer">
+            <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+
+            <!-- 開始/暫停/結束 覆蓋層 -->
+            <div id="gameOverlay" class="absolute inset-0 bg-gray-950/90 backdrop-blur-sm flex flex-col items-center justify-center transition-all duration-300 z-10">
+                <div class="text-center p-6 transform scale-100 transition-transform">
+                    <div id="overlayIconContainer" class="text-pink-500 text-5xl mb-4 animate-bounce">
+                        <i class="fa-solid fa-gamepad"></i>
+                    </div>
+                    <h2 id="overlayTitle" class="text-3xl font-black tracking-widest text-cyan-400 neon-text-cyan mb-2">準備開始</h2>
+                    <p id="overlayDesc" class="text-sm text-gray-400 mb-6">點擊下方按鈕或按下空白鍵</p>
+                    <button id="startBtn" class="px-8 py-3 bg-cyan-500 hover:bg-cyan-400 text-gray-950 font-black text-lg tracking-widest rounded-xl shadow-lg shadow-cyan-500/20 active:scale-95 transition-all duration-100 uppercase">
+                        開始遊戲
+                    </button>
+                </div>
+            </div>
+
+            <!-- 暫停提示浮水印 -->
+            <div id="pauseIndicator" class="hidden absolute top-4 right-4 bg-gray-900/80 px-3 py-1 rounded-full border border-gray-800 text-xs font-bold text-gray-400 animate-pulse">
+                <i class="fa-solid fa-pause mr-1"></i> 已暫停
+            </div>
+        </div>
+
+        <!-- 觸控螢幕虛擬搖桿 (在電腦上亦可用滑鼠點擊) -->
+        <div id="virtualDpad" class="w-full flex flex-col items-center justify-center p-2">
+            <div class="grid grid-cols-3 gap-2 w-44">
+                <div></div>
+                <button id="btnUp" class="dpad-btn h-12 w-12 rounded-xl bg-gray-800/80 border border-gray-700/50 flex items-center justify-center text-cyan-400 text-xl shadow-md"><i class="fa-solid fa-chevron-up"></i></button>
+                <div></div>
+                <button id="btnLeft" class="dpad-btn h-12 w-12 rounded-xl bg-gray-800/80 border border-gray-700/50 flex items-center justify-center text-cyan-400 text-xl shadow-md"><i class="fa-solid fa-chevron-left"></i></button>
+                <button id="btnPause" class="h-12 w-12 rounded-xl bg-cyan-950/40 border border-cyan-800/40 flex items-center justify-center text-pink-500 text-lg shadow-md active:scale-90" title="暫停遊戲"><i class="fa-solid fa-pause"></i></button>
+                <button id="btnRight" class="dpad-btn h-12 w-12 rounded-xl bg-gray-800/80 border border-gray-700/50 flex items-center justify-center text-cyan-400 text-xl shadow-md"><i class="fa-solid fa-chevron-right"></i></button>
+                <div></div>
+                <button id="btnDown" class="dpad-btn h-12 w-12 rounded-xl bg-gray-800/80 border border-gray-700/50 flex items-center justify-center text-cyan-400 text-xl shadow-md"><i class="fa-solid fa-chevron-down"></i></button>
+                <div></div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 底部資訊與操作提示 -->
+    <footer class="w-full max-w-md text-center py-2 border-t border-gray-900 text-[11px] text-gray-500">
+        <div class="hidden sm:block">電腦操作：方向鍵 或 WASD 移動 | 空白鍵 暫停/繼續</div>
+        <div class="sm:hidden">手機操作：使用虛擬方向鍵 或 直接在畫布滑動</div>
+        <div class="mt-1 text-gray-600">ARCADE ENGINE v2.6 · 120Hz SUPPORTED</div>
+    </footer>
+
+    <script>
+        /**
+         * 街機復古音效生成器 (使用 Web Audio API)
+         */
+        class SoundEffects {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playEat() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'triangle'; 
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.15);
+                
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                
+                osc.start(now);
+                osc.stop(now + 0.15);
+            }
+
+            playGoldenEat() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                
+                const playNote = (freq, delay, duration) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'square'; 
+                    osc.frequency.setValueAtTime(freq, now + delay);
+                    gain.gain.setValueAtTime(0.1, now + delay);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + delay + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + delay);
+                    osc.stop(now + delay + duration);
+                };
+                
+                playNote(523.25, 0, 0.1); // C5
+                playNote(659.25, 0.08, 0.1); // E5
+                playNote(783.99, 0.16, 0.25); // G5
+            }
+
+            playCrash() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(40, now + 0.5);
+                
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                
+                osc.start(now);
+                osc.stop(now + 0.5);
+            }
+
+            playClick() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, now);
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                
+                osc.start(now);
+                osc.stop(now + 0.05);
+            }
+        }
+
+        const sfx = new SoundEffects();
+
+        // --- 核心遊戲變數與元件 ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvasContainer');
+        const scoreVal = document.getElementById('score');
+        const highScoreVal = document.getElementById('highScore');
+        const difficultySelect = document.getElementById('difficultySelect');
+        const soundBtn = document.getElementById('soundBtn');
+        const soundIcon = document.getElementById('soundIcon');
+        
+        const overlay = document.getElementById('gameOverlay');
+        const overlayIcon = document.getElementById('overlayIconContainer');
+        const overlayTitle = document.getElementById('overlayTitle');
+        const overlayDesc = document.getElementById('overlayDesc');
+        const startBtn = document.getElementById('startBtn');
+        const pauseIndicator = document.getElementById('pauseIndicator');
+
+        // 邏輯網格設定
+        const GRID_SIZE = 20; 
+        let CELL_SIZE = 20;   
+        
+        // 遊戲狀態
+        let snake = [];
+        let food = { x: 0, y: 0, isGolden: false };
+        let dir = { x: 1, y: 0 };    
+        let nextDir = { x: 1, y: 0 };
+        let score = 0;
+        let highScore = parseInt(localStorage.getItem('neonSnakeHighScore') || '0');
+        let gameState = 'IDLE'; // IDLE, PLAYING, PAUSED, GAMEOVER
+        
+        // 120Hz 高刷引擎計時參數
+        let lastFrameTime = 0;
+        let accumulator = 0;
+        let animationFrameId = null;
+
+        // 難度對應之毫秒間隔
+        const SPEEDS = {
+            easy: 220,    
+            medium: 150,  
+            hard: 90      
+        };
+
+        highScoreVal.textContent = String(highScore).padStart(3, '0');
+
+        // --- 初始化自適應畫布 ---
+        function resizeCanvas() {
+            const size = container.clientWidth || 400; 
+            canvas.width = size;
+            canvas.height = size;
+            CELL_SIZE = size / GRID_SIZE;
+            
+            if (CELL_SIZE <= 0) {
+                CELL_SIZE = 20;
+            }
+            
+            // 隨時重繪場景以保持完美解析度
+            drawScene();
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- 音效控制切換 ---
+        soundBtn.addEventListener('click', () => {
+            sfx.enabled = !sfx.enabled;
+            if (sfx.enabled) {
+                soundIcon.className = 'fa-solid fa-volume-high';
+                sfx.playClick();
+            } else {
+                soundIcon.className = 'fa-solid fa-volume-xmark';
+            }
+        });
+
+        // --- 核心遊戲流程控制器 (120Hz 優化) ---
+        
+        function startGame() {
+            sfx.playClick();
+            
+            snake = [
+                { x: 10, y: 10 },
+                { x: 9, y: 10 },
+                { x: 8, y: 10 }
+            ];
+            
+            dir = { x: 1, y: 0 };
+            nextDir = { x: 1, y: 0 };
+            score = 0;
+            updateScoreDisplay();
+            spawnFood();
+            
+            gameState = 'PLAYING';
+            overlay.classList.add('hidden');
+            pauseIndicator.classList.add('hidden');
+            
+            // 啟動基於 rAF 的高效能遊戲迴圈
+            lastFrameTime = performance.now();
+            accumulator = 0;
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // 核心 120Hz/高刷 自適應遊戲主迴圈
+        function gameLoop(now) {
+            // 計算前後幀的時間差 (ms)
+            let deltaTime = now - lastFrameTime;
+            lastFrameTime = now;
+
+            // 防禦性限制：避免瀏覽器切換分頁後累積過大時間差
+            if (deltaTime > 1000) deltaTime = 0;
+
+            if (gameState === 'PLAYING') {
+                accumulator += deltaTime;
+                const speedThreshold = SPEEDS[difficultySelect.value] || SPEEDS.medium;
+
+                // 時間累積器：精準控制遊戲物理 Tick，不受螢幕刷新率（60Hz/120Hz/240Hz）影響
+                while (accumulator >= speedThreshold) {
+                    tick();
+                    accumulator -= speedThreshold;
+                    if (gameState !== 'PLAYING') break; // 若期間死亡則中斷
+                }
+            } else {
+                accumulator = 0; // 非遊玩狀態重置累積器
+            }
+
+            // 無論是否更新邏輯，繪圖(渲染)都跟隨螢幕最高幀率刷新 (達到 120Hz 的超絲滑畫面)
+            drawScene();
+
+            // 持續請求下一幀，與硬體同步
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        function togglePause() {
+            if (gameState === 'PLAYING') {
+                gameState = 'PAUSED';
+                pauseIndicator.classList.remove('hidden');
+                sfx.playClick();
+            } else if (gameState === 'PAUSED') {
+                gameState = 'PLAYING';
+                pauseIndicator.classList.add('hidden');
+                lastFrameTime = performance.now(); // 避免暫停期間的時間差造成瞬間暴衝
+                sfx.playClick();
+            }
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            sfx.playCrash();
+
+            container.classList.add('shake-effect');
+            setTimeout(() => {
+                container.classList.remove('shake-effect');
+            }, 200);
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('neonSnakeHighScore', highScore);
+                highScoreVal.textContent = String(highScore).padStart(3, '0');
+            }
+
+            overlayIcon.innerHTML = `<i class="fa-solid fa-skull-crossbones text-red-500"></i>`;
+            overlayTitle.textContent = "GAME OVER";
+            overlayTitle.className = "text-3xl font-black tracking-widest text-red-500 neon-text-pink mb-2";
+            overlayDesc.innerHTML = `本次得分：<span class="text-pink-500 font-bold">${score}</span>`;
+            startBtn.textContent = "再次挑戰";
+            overlay.classList.remove('hidden');
+        }
+
+        // --- 每一個邏輯 Tick ---
+        function tick() {
+            dir = nextDir;
+
+            const head = {
+                x: snake[0].x + dir.x,
+                y: snake[0].y + dir.y
+            };
+
+            // 邊界碰撞檢測
+            if (head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE) {
+                gameOver();
+                return;
+            }
+
+            // 身體碰撞檢測
+            for (let i = 0; i < snake.length - 1; i++) {
+                if (snake[i].x === head.x && snake[i].y === head.y) {
+                    gameOver();
+                    return;
+                }
+            }
+
+            snake.unshift(head);
+
+            if (head.x === food.x && head.y === food.y) {
+                if (food.isGolden) {
+                    score += 30;
+                    sfx.playGoldenEat();
+                } else {
+                    score += 10;
+                    sfx.playEat();
+                }
+                updateScoreDisplay();
+                spawnFood();
+            } else {
+                snake.pop(); 
+            }
+        }
+
+        function updateScoreDisplay() {
+            scoreVal.textContent = String(score).padStart(3, '0');
+        }
+
+        // --- 生成食物 ---
+        function spawnFood() {
+            let valid = false;
+            let rx, ry;
+
+            while (!valid) {
+                rx = Math.floor(Math.random() * GRID_SIZE);
+                ry = Math.floor(Math.random() * GRID_SIZE);
+                valid = !snake.some(segment => segment.x === rx && segment.y === ry);
+            }
+
+            const isGolden = Math.random() < 0.15;
+
+            food = {
+                x: rx,
+                y: ry,
+                isGolden: isGolden
+            };
+        }
+
+        // --- 繪圖渲染細節 (由 120Hz 渲染迴圈直接調用) ---
+        function drawScene() {
+            ctx.fillStyle = '#030712';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 繪製微弱網格
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i <= GRID_SIZE; i++) {
+                const pos = i * CELL_SIZE;
+                ctx.beginPath();
+                ctx.moveTo(pos, 0);
+                ctx.lineTo(pos, canvas.height);
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.moveTo(0, pos);
+                ctx.lineTo(canvas.width, pos);
+                ctx.stroke();
+            }
+
+            // 繪製食物
+            const fX = food.x * CELL_SIZE + CELL_SIZE / 2;
+            const fY = food.y * CELL_SIZE + CELL_SIZE / 2;
+            const radius = Math.max(2, (CELL_SIZE / 2) - 1.5);
+
+            if (food.isGolden) {
+                ctx.shadowColor = '#eab308';
+                ctx.shadowBlur = 12;
+                ctx.fillStyle = '#facc15';
+                ctx.beginPath();
+                ctx.arc(fX, fY, radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(fX - radius/3, fY - radius/3, radius/4, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                ctx.shadowColor = '#ec4899';
+                ctx.shadowBlur = 10;
+                ctx.fillStyle = '#f43f5e';
+                ctx.beginPath();
+                ctx.arc(fX, fY, radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.fillStyle = '#10b981';
+                ctx.beginPath();
+                ctx.ellipse(fX + 1, fY - radius + 1, 2, 4, Math.PI / 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            ctx.shadowBlur = 0;
+
+            // 繪製蛇蛇
+            snake.forEach((segment, index) => {
+                const sX = segment.x * CELL_SIZE;
+                const sY = segment.y * CELL_SIZE;
+                const innerSize = Math.max(1, CELL_SIZE - 2);
+
+                if (index === 0) {
+                    ctx.fillStyle = '#06b6d4'; 
+                    ctx.shadowColor = '#06b6d4';
+                    ctx.shadowBlur = 8;
+                    
+                    ctx.beginPath();
+                    ctx.roundRect(sX + 1, sY + 1, innerSize, innerSize, 6);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+
+                    ctx.fillStyle = '#ffffff';
+                    let eyeOffset1 = {x: 0, y: 0};
+                    let eyeOffset2 = {x: 0, y: 0};
+                    
+                    if (dir.x !== 0) { 
+                        const xOffset = dir.x > 0 ? CELL_SIZE - 6 : 4;
+                        eyeOffset1 = { x: xOffset, y: 4 };
+                        eyeOffset2 = { x: xOffset, y: CELL_SIZE - 8 };
+                    } else { 
+                        const yOffset = dir.y > 0 ? CELL_SIZE - 6 : 4;
+                        eyeOffset1 = { x: 4, y: yOffset };
+                        eyeOffset2 = { x: CELL_SIZE - 8, y: yOffset };
+                    }
+                    
+                    ctx.fillRect(sX + eyeOffset1.x, sY + eyeOffset1.y, 4, 4);
+                    ctx.fillRect(sX + eyeOffset2.x, sY + eyeOffset2.y, 4, 4);
+                    
+                    ctx.fillStyle = '#0f172a';
+                    const pupilXOffset = dir.x > 0 ? 1 : (dir.x < 0 ? -1 : 0);
+                    const pupilYOffset = dir.y > 0 ? 1 : (dir.y < 0 ? -1 : 0);
+                    ctx.fillRect(sX + eyeOffset1.x + 1 + pupilXOffset, sY + eyeOffset1.y + 1 + pupilYOffset, 2, 2);
+                    ctx.fillRect(sX + eyeOffset2.x + 1 + pupilXOffset, sY + eyeOffset2.y + 1 + pupilYOffset, 2, 2);
+
+                } else {
+                    const ratio = index / snake.length;
+                    ctx.fillStyle = `rgba(6, ${182 - Math.floor(ratio * 80)}, ${212 - Math.floor(ratio * 50)}, ${1 - (ratio * 0.4)})`;
+                    
+                    ctx.beginPath();
+                    ctx.roundRect(sX + 1.5, sY + 1.5, Math.max(1, innerSize - 1), Math.max(1, innerSize - 1), 4);
+                    ctx.fill();
+                }
+            });
+        }
+
+        // --- 核心按鍵控制、滑動手勢與搖桿 ---
+
+        function handleDirectionInput(dx, dy) {
+            if (dx === -dir.x && dy === -dir.y) return;
+            if (snake.length > 1 && dx === -dir.x && dy === -dir.y) return;
+
+            nextDir = { x: dx, y: dy };
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+                e.preventDefault();
+            }
+
+            if (gameState === 'PLAYING') {
+                switch(e.key.toLowerCase()) {
+                    case 'arrowup':
+                    case 'w':
+                        handleDirectionInput(0, -1);
+                        break;
+                    case 'arrowdown':
+                    case 's':
+                        handleDirectionInput(0, 1);
+                        break;
+                    case 'arrowleft':
+                    case 'a':
+                        handleDirectionInput(-1, 0);
+                        break;
+                    case 'arrowright':
+                    case 'd':
+                        handleDirectionInput(1, 0);
+                        break;
+                    case ' ':
+                        togglePause();
+                        break;
+                }
+            } else {
+                if (e.key === ' ' || e.key === 'Spacebar') {
+                    if (gameState === 'IDLE' || gameState === 'GAMEOVER') {
+                        startGame();
+                    } else if (gameState === 'PAUSED') {
+                        togglePause();
+                    }
+                }
+            }
+        });
+
+        // 虛擬 D-pad 觸發
+        document.getElementById('btnUp').addEventListener('touchstart', (e) => { e.preventDefault(); handleDirectionInput(0, -1); });
+        document.getElementById('btnDown').addEventListener('touchstart', (e) => { e.preventDefault(); handleDirectionInput(0, 1); });
+        document.getElementById('btnLeft').addEventListener('touchstart', (e) => { e.preventDefault(); handleDirectionInput(-1, 0); });
+        document.getElementById('btnRight').addEventListener('touchstart', (e) => { e.preventDefault(); handleDirectionInput(1, 0); });
+        
+        document.getElementById('btnUp').addEventListener('mousedown', () => handleDirectionInput(0, -1));
+        document.getElementById('btnDown').addEventListener('mousedown', () => handleDirectionInput(0, 1));
+        document.getElementById('btnLeft').addEventListener('mousedown', () => handleDirectionInput(-1, 0));
+        document.getElementById('btnRight').addEventListener('mousedown', () => handleDirectionInput(1, 0));
+
+        const pauseAction = () => {
+            if (gameState === 'PLAYING' || gameState === 'PAUSED') {
+                togglePause();
+            }
+        };
+        document.getElementById('btnPause').addEventListener('touchstart', (e) => { e.preventDefault(); pauseAction(); });
+        document.getElementById('btnPause').addEventListener('mousedown', pauseAction);
+
+        startBtn.addEventListener('click', startGame);
+
+        // 手勢滑動 (Swipe)
+        let touchStartX = 0;
+        let touchStartY = 0;
+        const SWIPE_THRESHOLD = 30;
+
+        canvas.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+            touchStartY = e.changedTouches[0].screenY;
+        }, { passive: true });
+
+        canvas.addEventListener('touchend', (e) => {
+            if (gameState !== 'PLAYING') return;
+
+            const touchEndX = e.changedTouches[0].screenX;
+            const touchEndY = e.changedTouches[0].screenY;
+
+            const diffX = touchEndX - touchStartX;
+            const diffY = touchEndY - touchStartY;
+
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+                if (Math.abs(diffX) > SWIPE_THRESHOLD) {
+                    if (diffX > 0) {
+                        handleDirectionInput(1, 0);
+                    } else {
+                        handleDirectionInput(-1, 0);
+                    }
+                }
+            } else {
+                if (Math.abs(diffY) > SWIPE_THRESHOLD) {
+                    if (diffY > 0) {
+                        handleDirectionInput(0, 1);
+                    } else {
+                        handleDirectionInput(0, -1);
+                    }
+                }
+            }
+        }, { passive: true });
+
+        // 開始獨立的無限渲染迴圈 (rAF)，即使遊戲未開始也能渲染背景網格
+        lastFrameTime = performance.now();
+        animationFrameId = requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
